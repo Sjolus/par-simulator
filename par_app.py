@@ -422,11 +422,6 @@ class ParDisplay:
 
     def render(self, track: Optional[Dict], connected: bool, error: Optional[str]) -> None:
         self.screen.fill(BG)
-        self._draw_labels()
-        self._draw_dropdown()
-        self._draw_status(connected, error)
-        self._draw_connect_button(connected)
-
         header_height = 140
         available_height = WINDOW_SIZE[1] - header_height - 40
         panel_height = available_height // 2
@@ -435,6 +430,11 @@ class ParDisplay:
 
         self._draw_elevation(top_rect, track)
         self._draw_azimuth(bottom_rect, track)
+
+        self._draw_labels()
+        self._draw_dropdown()
+        self._draw_status(connected, error)
+        self._draw_connect_button(connected)
 
         pygame.display.flip()
 
