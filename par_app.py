@@ -148,6 +148,11 @@ def _load_config() -> None:
     window = cfg.get("window_size")
     if isinstance(window, list) and len(window) == 2:
         WINDOW_SIZE = (int(window[0]), int(window[1]))
+        if WINDOW_SIZE[0] < 640 or WINDOW_SIZE[1] < 480:
+            _log(f"Config: window_size too small ({WINDOW_SIZE[0]}x{WINDOW_SIZE[1]}), using default")
+            WINDOW_SIZE = (900, 800)
+        else:
+            _log(f"Config: window_size set to {WINDOW_SIZE[0]}x{WINDOW_SIZE[1]}")
 
     AIRPORT_CONFIGS = cfg.get("airports", {})
     ACTIVE_AIRPORT_KEY = cfg.get("active_airport")
@@ -255,7 +260,11 @@ class ParDisplay:
     def __init__(self) -> None:
         pygame.init()
         pygame.scrap.init()
-        self.screen = pygame.display.set_mode(WINDOW_SIZE)
+        try:
+            self.screen = pygame.display.set_mode(WINDOW_SIZE)
+        except pygame.error:
+            _log(f"Window: invalid size {WINDOW_SIZE[0]}x{WINDOW_SIZE[1]}, falling back")
+            self.screen = pygame.display.set_mode((900, 800))
         pygame.display.set_caption("PAR Display")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Arial", 18)
