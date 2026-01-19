@@ -13,7 +13,12 @@ from SimConnect import AircraftRequests, SimConnect
 # ---------------------------
 # Configuration
 # ---------------------------
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "par_config.json")
+def _config_path() -> str:
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(__file__)
+    return os.path.join(base, "par_config.json")
 
 TARGET_CALLSIGN = None  # e.g. "A1234" to lock to a target
 
@@ -136,11 +141,12 @@ def _load_config() -> None:
     global WINDOW_SIZE, POLL_HZ, AIRPORT_CONFIGS, RUNWAY_CONFIGS
     global ACTIVE_AIRPORT_KEY, ACTIVE_RUNWAY_KEY
 
-    if not os.path.exists(CONFIG_PATH):
-        _log("Config: par_config.json not found, using defaults")
+    config_path = _config_path()
+    if not os.path.exists(config_path):
+        _log(f"Config: par_config.json not found at {config_path}, using defaults")
         return
 
-    with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
+    with open(config_path, "r", encoding="utf-8") as handle:
         cfg = json.load(handle)
 
     TARGET_CALLSIGN = cfg.get("target_callsign", TARGET_CALLSIGN)
@@ -209,9 +215,8 @@ class SimConnectSource:
             aircraft = self.sm.get_aircraft_list()
             return [a["object_id"] for a in aircraft if a.get("is_user") is False]
 
-        req = self.sm.RequestDataOnSimObjectType
-        data = req(0, 0, self.sm.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
-        return [d["ObjectID"] for d in data if d.get("IsUser") is False]
+        _log("SimConnect: get_aircraft_list unavailable in wrapper")
+        return []
 
     def poll(self) -> List[Dict]:
         if not self.connected or not self.aq:
