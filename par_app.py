@@ -427,8 +427,11 @@ class ParDisplay:
         self._draw_status(connected, error)
         self._draw_connect_button(connected)
 
-        top_rect = pygame.Rect(20, 20, WINDOW_SIZE[0] - 40, (WINDOW_SIZE[1] - 80) // 2)
-        bottom_rect = pygame.Rect(20, top_rect.bottom + 20, WINDOW_SIZE[0] - 40, (WINDOW_SIZE[1] - 80) // 2)
+        header_height = 140
+        available_height = WINDOW_SIZE[1] - header_height - 40
+        panel_height = available_height // 2
+        top_rect = pygame.Rect(20, header_height, WINDOW_SIZE[0] - 40, panel_height)
+        bottom_rect = pygame.Rect(20, top_rect.bottom + 20, WINDOW_SIZE[0] - 40, panel_height)
 
         self._draw_elevation(top_rect, track)
         self._draw_azimuth(bottom_rect, track)
