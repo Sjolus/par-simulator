@@ -1,0 +1,81 @@
+{
+  "active_airport": "ESIB",
+  "active_runway": "RWY19",
+  "airports": {
+    "ESIB": {
+      "runways": {
+        "RWY01": {
+          "lat": 58.4181667,
+          "lon": 12.7096667,
+          "elev_ft": 169.0,
+          "heading_deg": 1.0,
+          "glideslope_deg": 3.0,
+          "max_range_nm": 10.0
+        },
+        "RWY19": {
+          "lat": 58.4385,
+          "lon": 12.7128333,
+          "elev_ft": 175.0,
+          "heading_deg": 181.0,
+          "glideslope_deg": 3.0,
+          "max_range_nm": 10.0
+        },
+        "RWY11": {
+          "lat": 58.4331667,
+          "lon": 12.6946667,
+          "elev_ft": 166.0,
+          "heading_deg": 108.0,
+          "glideslope_deg": 3.0,
+          "max_range_nm": 10.0
+        },
+        "RWY29": {
+          "lat": 58.4266667,
+          "lon": 12.7255,
+          "elev_ft": 181.0,
+          "heading_deg": 288.0,
+          "glideslope_deg": 3.0,
+          "max_range_nm": 10.0
+        }
+      }
+    },
+    "ESDF": {
+      "runways": {
+        "RWY01": {
+          "lat": 56.257,
+          "lon": 15.2625,
+          "elev_ft": 181.0,
+          "heading_deg": 4.0,
+          "glideslope_deg": 3.0,
+          "max_range_nm": 10.0
+        },
+        "RWY19": {
+          "lat": 56.2776667,
+          "lon": 15.2681667,
+          "elev_ft": 188.0,
+          "heading_deg": 184.0,
+          "glideslope_deg": 3.0,
+          "max_range_nm": 10.0
+        },
+        "RWY12": {
+          "lat": 56.2568333,
+          "lon": 15.2668333,
+          "elev_ft": 181.0,
+          "heading_deg": 108.0,
+          "glideslope_deg": 3.0,
+          "max_range_nm": 10.0
+        },
+        "RWY30": {
+          "lat": 56.2548333,
+          "lon": 15.2758333,
+          "elev_ft": 177.0,
+          "heading_deg": 288.0,
+          "glideslope_deg": 3.0,
+          "max_range_nm": 10.0
+        }
+      }
+    }
+  },
+  "target_callsign": null,
+  "poll_hz": 2.0,
+  "window_size": [900, 800]
+}
