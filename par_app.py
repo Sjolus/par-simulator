@@ -29,11 +29,15 @@ WINDOW_SIZE = (900, 800)
 FPS = 30
 POLL_HZ = 2.0
 HISTORY_SECONDS = 15
+LOG_HISTORY = 200
+LOG_VISIBLE_LINES = 8
 
 AIRPORT_CONFIGS: Dict[str, Dict] = {}
 RUNWAY_CONFIGS: Dict[str, Dict] = {}
 ACTIVE_AIRPORT_KEY: Optional[str] = None
 ACTIVE_RUNWAY_KEY: Optional[str] = None
+LOG_LINES: Deque[str] = deque(maxlen=LOG_HISTORY)
+LOG_SELECTED_INDEX: Optional[int] = None
 
 # Colors
 BG = (52, 52, 52)
@@ -122,12 +126,18 @@ def _apply_runway(active: Dict) -> None:
     MAX_RANGE_NM = float(active.get("max_range_nm", MAX_RANGE_NM))
 
 
+def _log(message: str) -> None:
+    timestamp = time.strftime("%H:%M:%S")
+    LOG_LINES.appendleft(f"[{timestamp}] {message}")
+
+
 def _load_config() -> None:
     global TARGET_CALLSIGN
     global WINDOW_SIZE, POLL_HZ, AIRPORT_CONFIGS, RUNWAY_CONFIGS
     global ACTIVE_AIRPORT_KEY, ACTIVE_RUNWAY_KEY
 
     if not os.path.exists(CONFIG_PATH):
+        _log("Config: par_config.json not found, using defaults")
         return
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
@@ -143,11 +153,18 @@ def _load_config() -> None:
     ACTIVE_AIRPORT_KEY = cfg.get("active_airport")
     ACTIVE_RUNWAY_KEY = cfg.get("active_runway")
 
+    _log(f"Config: loaded {len(AIRPORT_CONFIGS)} airports")
+    if ACTIVE_AIRPORT_KEY:
+        _log(f"Config: active airport {ACTIVE_AIRPORT_KEY}")
+    if ACTIVE_RUNWAY_KEY:
+        _log(f"Config: active runway {ACTIVE_RUNWAY_KEY}")
+
     airport = AIRPORT_CONFIGS.get(ACTIVE_AIRPORT_KEY) if ACTIVE_AIRPORT_KEY else None
     RUNWAY_CONFIGS = airport.get("runways", {}) if airport else {}
     active = RUNWAY_CONFIGS.get(ACTIVE_RUNWAY_KEY) if ACTIVE_RUNWAY_KEY else None
     if active:
         _apply_runway(active)
+        _log("Config: runway applied")
 
 
 # ---------------------------
@@ -170,12 +187,14 @@ class SimConnectSource:
             self.aq = AircraftRequests(self.sm, _time=2000)
             self.connected = True
             self.last_error = None
+            _log("SimConnect: connected")
             return True
         except Exception as exc:
             self.connected = False
             self.last_error = str(exc)
             self.sm = None
             self.aq = None
+            _log(f"SimConnect: connect failed ({self.last_error})")
             return False
 
     def _get_ai_object_ids(self) -> List[int]:
@@ -219,7 +238,11 @@ class SimConnectSource:
             self.last_error = str(exc)
             self.sm = None
             self.aq = None
+            _log(f"SimConnect: lost connection ({self.last_error})")
             return self.cache
+
+        if not targets:
+            _log("SimConnect: no AI targets in range")
 
         self.cache = targets
         return targets
@@ -231,6 +254,7 @@ class SimConnectSource:
 class ParDisplay:
     def __init__(self) -> None:
         pygame.init()
+        pygame.scrap.init()
         self.screen = pygame.display.set_mode(WINDOW_SIZE)
         pygame.display.set_caption("PAR Display")
         self.clock = pygame.time.Clock()
@@ -247,6 +271,13 @@ class ParDisplay:
 
     def _connect_rect(self) -> pygame.Rect:
         return pygame.Rect(WINDOW_SIZE[0] - 220, 84, 200, 28)
+
+    def _log_rect(self) -> pygame.Rect:
+        return pygame.Rect(20, 120, WINDOW_SIZE[0] - 40, 18 + LOG_VISIBLE_LINES * 18)
+
+    def _copy_rect(self) -> pygame.Rect:
+        rect = self._log_rect()
+        return pygame.Rect(rect.right - 90, rect.top + 4, 80, 22)
 
     def _dropdown_item_rect(self, index: int) -> pygame.Rect:
         base = self._dropdown_rect()
@@ -287,6 +318,19 @@ class ParDisplay:
                 self.screen.blit(item_text, (item_rect.left + 8, item_rect.top + 3))
 
     def handle_click(self, pos: Tuple[int, int]) -> Optional[str]:
+        if self._copy_rect().collidepoint(pos):
+            return "copy-log"
+
+        if self._log_rect().collidepoint(pos):
+            rect = self._log_rect()
+            line_y = pos[1] - (rect.top + 28)
+            if line_y >= 0:
+                idx = line_y // 18
+                if 0 <= idx < min(LOG_VISIBLE_LINES, len(LOG_LINES)):
+                    global LOG_SELECTED_INDEX
+                    LOG_SELECTED_INDEX = int(idx)
+            return None
+
         if self._connect_rect().collidepoint(pos):
             return "connect"
 
@@ -327,6 +371,28 @@ class ParDisplay:
             text = self.font.render(line, True, WHITE)
             self.screen.blit(text, (20, y))
             y += 22
+
+    def _draw_log(self) -> None:
+        rect = self._log_rect()
+        pygame.draw.rect(self.screen, BG, rect)
+        pygame.draw.rect(self.screen, FRAME, rect, 2)
+
+        header = self.font_small.render("Log", True, WHITE)
+        self.screen.blit(header, (rect.left + 6, rect.top + 4))
+
+        copy_rect = self._copy_rect()
+        pygame.draw.rect(self.screen, FRAME, copy_rect, 1)
+        copy_text = self.font_small.render("Copy", True, WHITE)
+        self.screen.blit(copy_text, (copy_rect.left + 10, copy_rect.top + 4))
+
+        base_y = rect.top + 28
+        visible = list(LOG_LINES)[:LOG_VISIBLE_LINES]
+        for idx, line in enumerate(visible):
+            y = base_y + idx * 18
+            if LOG_SELECTED_INDEX is not None and LOG_SELECTED_INDEX == idx:
+                pygame.draw.rect(self.screen, (70, 70, 70), (rect.left + 4, y - 2, rect.width - 8, 18))
+            text = self.font_small.render(line, True, WHITE)
+            self.screen.blit(text, (rect.left + 6, y))
 
     def _draw_status(self, connected: bool, error: Optional[str]) -> None:
         status = "SIM: CONNECTED" if connected else "SIM: DISCONNECTED"
@@ -435,6 +501,7 @@ class ParDisplay:
         self._draw_dropdown()
         self._draw_status(connected, error)
         self._draw_connect_button(connected)
+        self._draw_log()
 
         pygame.display.flip()
 
@@ -443,7 +510,8 @@ class ParDisplay:
 # Main loop
 # ---------------------------
 def main() -> None:
-    global ACTIVE_RUNWAY_KEY, ACTIVE_AIRPORT_KEY, RUNWAY_CONFIGS
+    global ACTIVE_RUNWAY_KEY, ACTIVE_AIRPORT_KEY, RUNWAY_CONFIGS, LOG_SELECTED_INDEX
+    _log("App: starting")
     _load_config()
     display = ParDisplay()
     source = SimConnectSource()
@@ -458,6 +526,16 @@ def main() -> None:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 selected = display.handle_click(event.pos)
                 if selected:
+                    if selected == "copy-log":
+                        if LOG_SELECTED_INDEX is None:
+                            text = "\n".join(reversed(list(LOG_LINES)[:LOG_VISIBLE_LINES]))
+                        else:
+                            text = list(LOG_LINES)[LOG_SELECTED_INDEX]
+                        try:
+                            pygame.scrap.put(pygame.SCRAP_TEXT, text.encode("utf-8"))
+                            _log("Log copied to clipboard")
+                        except Exception:
+                            _log("Log copy failed")
                     if selected == "connect":
                         source.connect()
                     if selected.startswith("airport:"):
