@@ -155,12 +155,32 @@ def _load_config() -> None:
 # ---------------------------
 class SimConnectSource:
     def __init__(self) -> None:
-        self.sm = SimConnect()
-        self.aq = AircraftRequests(self.sm, _time=2000)
+        self.sm = None
+        self.aq = None
+        self.connected = False
+        self.last_error: Optional[str] = None
+        self.last_attempt = 0.0
         self.last_poll = 0.0
         self.cache: List[Dict] = []
 
+    def connect(self) -> bool:
+        self.last_attempt = time.time()
+        try:
+            self.sm = SimConnect()
+            self.aq = AircraftRequests(self.sm, _time=2000)
+            self.connected = True
+            self.last_error = None
+            return True
+        except Exception as exc:
+            self.connected = False
+            self.last_error = str(exc)
+            self.sm = None
+            self.aq = None
+            return False
+
     def _get_ai_object_ids(self) -> List[int]:
+        if not self.sm:
+            return []
         if hasattr(self.sm, "get_aircraft_list"):
             aircraft = self.sm.get_aircraft_list()
             return [a["object_id"] for a in aircraft if a.get("is_user") is False]
@@ -170,27 +190,36 @@ class SimConnectSource:
         return [d["ObjectID"] for d in data if d.get("IsUser") is False]
 
     def poll(self) -> List[Dict]:
+        if not self.connected or not self.aq:
+            return self.cache
         now = time.time()
         if now - self.last_poll < 1.0 / POLL_HZ:
             return self.cache
 
         self.last_poll = now
         targets: List[Dict] = []
-        for obj_id in self._get_ai_object_ids():
-            targets.append(
-                {
-                    "id": obj_id,
-                    "lat": self.aq.get("PLANE LATITUDE", _simconnect_id=obj_id),
-                    "lon": self.aq.get("PLANE LONGITUDE", _simconnect_id=obj_id),
-                    "alt": self.aq.get("PLANE ALTITUDE", _simconnect_id=obj_id),
-                    "hdg": self.aq.get("PLANE HEADING DEGREES TRUE", _simconnect_id=obj_id),
-                    "pitch": self.aq.get("PLANE PITCH DEGREES", _simconnect_id=obj_id),
-                    "bank": self.aq.get("PLANE BANK DEGREES", _simconnect_id=obj_id),
-                    "gs": self.aq.get("GROUND VELOCITY", _simconnect_id=obj_id),
-                    "vs": self.aq.get("VERTICAL SPEED", _simconnect_id=obj_id),
-                    "callsign": self.aq.get("ATC ID", _simconnect_id=obj_id),
-                }
-            )
+        try:
+            for obj_id in self._get_ai_object_ids():
+                targets.append(
+                    {
+                        "id": obj_id,
+                        "lat": self.aq.get("PLANE LATITUDE", _simconnect_id=obj_id),
+                        "lon": self.aq.get("PLANE LONGITUDE", _simconnect_id=obj_id),
+                        "alt": self.aq.get("PLANE ALTITUDE", _simconnect_id=obj_id),
+                        "hdg": self.aq.get("PLANE HEADING DEGREES TRUE", _simconnect_id=obj_id),
+                        "pitch": self.aq.get("PLANE PITCH DEGREES", _simconnect_id=obj_id),
+                        "bank": self.aq.get("PLANE BANK DEGREES", _simconnect_id=obj_id),
+                        "gs": self.aq.get("GROUND VELOCITY", _simconnect_id=obj_id),
+                        "vs": self.aq.get("VERTICAL SPEED", _simconnect_id=obj_id),
+                        "callsign": self.aq.get("ATC ID", _simconnect_id=obj_id),
+                    }
+                )
+        except Exception as exc:
+            self.connected = False
+            self.last_error = str(exc)
+            self.sm = None
+            self.aq = None
+            return self.cache
 
         self.cache = targets
         return targets
@@ -215,6 +244,9 @@ class ParDisplay:
 
     def _runway_dropdown_rect(self) -> pygame.Rect:
         return pygame.Rect(WINDOW_SIZE[0] - 220, 50, 200, 28)
+
+    def _connect_rect(self) -> pygame.Rect:
+        return pygame.Rect(WINDOW_SIZE[0] - 220, 84, 200, 28)
 
     def _dropdown_item_rect(self, index: int) -> pygame.Rect:
         base = self._dropdown_rect()
@@ -255,6 +287,9 @@ class ParDisplay:
                 self.screen.blit(item_text, (item_rect.left + 8, item_rect.top + 3))
 
     def handle_click(self, pos: Tuple[int, int]) -> Optional[str]:
+        if self._connect_rect().collidepoint(pos):
+            return "connect"
+
         if self._dropdown_rect().collidepoint(pos):
             self.dropdown_open = None if self.dropdown_open == "airport" else "airport"
             return None
@@ -292,6 +327,22 @@ class ParDisplay:
             text = self.font.render(line, True, WHITE)
             self.screen.blit(text, (20, y))
             y += 22
+
+    def _draw_status(self, connected: bool, error: Optional[str]) -> None:
+        status = "SIM: CONNECTED" if connected else "SIM: DISCONNECTED"
+        color = GREEN if connected else ORANGE
+        text = self.font_small.render(status, True, color)
+        self.screen.blit(text, (20, 88))
+        if error and not connected:
+            err = self.font_small.render("Click Connect when sim is running", True, WHITE)
+            self.screen.blit(err, (20, 108))
+
+    def _draw_connect_button(self, connected: bool) -> None:
+        rect = self._connect_rect()
+        pygame.draw.rect(self.screen, FRAME, rect, 2)
+        label = "Connect" if not connected else "Reconnect"
+        text = self.font_small.render(label, True, WHITE)
+        self.screen.blit(text, (rect.left + 8, rect.top + 5))
 
     def _draw_elevation(self, rect: pygame.Rect, track: Optional[Dict]) -> None:
         pygame.draw.rect(self.screen, BG, rect)
@@ -369,10 +420,12 @@ class ParDisplay:
         text = self.font.render(label, True, WHITE)
         self.screen.blit(text, (gx + 10, cy - 20))
 
-    def render(self, track: Optional[Dict]) -> None:
+    def render(self, track: Optional[Dict], connected: bool, error: Optional[str]) -> None:
         self.screen.fill(BG)
         self._draw_labels()
         self._draw_dropdown()
+        self._draw_status(connected, error)
+        self._draw_connect_button(connected)
 
         top_rect = pygame.Rect(20, 20, WINDOW_SIZE[0] - 40, (WINDOW_SIZE[1] - 80) // 2)
         bottom_rect = pygame.Rect(20, top_rect.bottom + 20, WINDOW_SIZE[0] - 40, (WINDOW_SIZE[1] - 80) // 2)
@@ -391,6 +444,7 @@ def main() -> None:
     _load_config()
     display = ParDisplay()
     source = SimConnectSource()
+    source.connect()
     running = True
 
     last_track = None
@@ -401,6 +455,8 @@ def main() -> None:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 selected = display.handle_click(event.pos)
                 if selected:
+                    if selected == "connect":
+                        source.connect()
                     if selected.startswith("airport:"):
                         key = selected.split(":", 1)[1]
                         if key in AIRPORT_CONFIGS:
@@ -419,7 +475,7 @@ def main() -> None:
         target = _pick_target(targets)
         last_track = _compute_track(target)
 
-        display.render(last_track)
+        display.render(last_track, source.connected, source.last_error)
         display.clock.tick(FPS)
 
     pygame.quit()
