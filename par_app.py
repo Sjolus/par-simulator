@@ -259,12 +259,15 @@ class SimConnectSource:
 class ParDisplay:
     def __init__(self) -> None:
         pygame.init()
-        pygame.scrap.init()
         try:
             self.screen = pygame.display.set_mode(WINDOW_SIZE)
         except pygame.error:
             _log(f"Window: invalid size {WINDOW_SIZE[0]}x{WINDOW_SIZE[1]}, falling back")
             self.screen = pygame.display.set_mode((900, 800))
+        try:
+            pygame.scrap.init()
+        except pygame.error:
+            _log("Clipboard: unavailable")
         pygame.display.set_caption("PAR Display")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Arial", 18)
