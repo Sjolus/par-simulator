@@ -21,9 +21,15 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Locate SimConnect DLL
+        shell: pwsh
+        run: |
+          $sim = python -c "import SimConnect, pathlib; print(pathlib.Path(SimConnect.__file__).parent / 'SimConnect.dll')"
+          echo "SIMCONNECT_DLL=$sim" >> $env:GITHUB_ENV
+
       - name: Build exe
         run: |
-          pyinstaller --onefile --windowed par_app.py
+          pyinstaller --onefile --windowed --add-binary "$env:SIMCONNECT_DLL;SimConnect" par_app.py
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
