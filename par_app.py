@@ -190,6 +190,8 @@ class SimConnectSource:
         self.last_attempt = 0.0
         self.last_poll = 0.0
         self.cache: List[Dict] = []
+        self._no_list_logged = False
+        self._no_targets_log_time = 0.0
 
     def connect(self) -> bool:
         self.last_attempt = time.time()
@@ -215,7 +217,25 @@ class SimConnectSource:
             aircraft = self.sm.get_aircraft_list()
             return [a["object_id"] for a in aircraft if a.get("is_user") is False]
 
-        _log("SimConnect: get_aircraft_list unavailable in wrapper")
+        request_method = None
+        for name in ("RequestDataOnSimObjectType", "request_data_on_sim_object_type"):
+            if hasattr(self.sm, name):
+                request_method = getattr(self.sm, name)
+                break
+
+        if request_method:
+            try:
+                data = request_method(0, 0, self.sm.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+                return [d["ObjectID"] for d in data if d.get("IsUser") is False]
+            except Exception as exc:
+                if not self._no_list_logged:
+                    _log(f"SimConnect: aircraft list request failed ({exc})")
+                    self._no_list_logged = True
+                return []
+
+        if not self._no_list_logged:
+            _log("SimConnect: aircraft listing not supported by wrapper")
+            self._no_list_logged = True
         return []
 
     def poll(self) -> List[Dict]:
@@ -252,7 +272,9 @@ class SimConnectSource:
             return self.cache
 
         if not targets:
-            _log("SimConnect: no AI targets in range")
+            if time.time() - self._no_targets_log_time > 5.0:
+                _log("SimConnect: no AI targets in range")
+                self._no_targets_log_time = time.time()
 
         self.cache = targets
         return targets
